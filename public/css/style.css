@@ -1,0 +1,12 @@
+:root { --brand: #1b1f3b; --accent: #ff4d6d; }
+body { background: #f4f5fa; }
+.bg-brand { background: var(--brand); }
+.text-accent { color: var(--accent); }
+.btn-brand { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-brand:hover { background: #e63e5d; border-color: #e63e5d; color: #fff; }
+.card { border: 0; box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+.nav-link.active { color: #fff !important; border-bottom: 2px solid var(--accent); }
+.vs { font-weight: 700; color: #888; padding: 0 .5rem; }
+.logo { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; background: #dde; vertical-align: middle; margin-right: 6px; }
+.bukti-thumb { max-height: 90px; border-radius: 6px; cursor: zoom-in; }
+.table > :not(caption) > * > * { vertical-align: middle; }

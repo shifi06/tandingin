@@ -1,0 +1,6 @@
+Flask-Migrate/Alembic migrations for Tanding.in.
+
+Create future revisions with:
+  flask --app app db migrate -m "describe schema change"
+Apply with:
+  flask --app app db upgrade

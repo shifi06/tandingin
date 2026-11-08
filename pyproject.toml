@@ -1,0 +1,5 @@
+[project]
+name = "tandingin"
+version = "1.2.3"
+description = "Platform manajemen turnamen dan pencatatan hasil pertandingan e-sports"
+requires-python = ">=3.12"
