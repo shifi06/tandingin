@@ -2,6 +2,41 @@
 const $app = document.getElementById('app');
 let me = null;
 
+let roleRefreshPromise = null;
+
+async function refreshSessionRole() {
+  if (!roleRefreshPromise) {
+    roleRefreshPromise = (async () => {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        if (!response.ok) return false;
+        const latest = await response.json();
+        if (!latest) {
+          me = null;
+          location.hash = '#/login';
+          return true;
+        }
+        const changed = !me || latest.id_user !== me.id_user || latest.role !== me.role;
+        if (!changed) return false;
+
+        me = latest;
+        renderNav();
+        const currentRoute = location.hash.split('/')[1] || '';
+        const requiredRole = ROLE_ONLY[currentRoute];
+        if (requiredRole && me.role !== requiredRole) location.hash = '#/turnamen';
+        toast('Role akun berubah. Menu dan hak akses telah diperbarui.', 'warning');
+        return true;
+      } catch {
+        return false;
+      }
+    })().finally(() => { roleRefreshPromise = null; });
+  }
+  return roleRefreshPromise;
+}
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtDT = s => s ? new Date(s).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
@@ -17,6 +52,16 @@ async function api(path, opts = {}) {
   const r = await fetch('/api' + path, o);
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
+    // The role can be changed by Super Admin while this tab is still open.
+    // The frontend's cached "me" may then disagree with the role checked by Flask.
+    if (r.status === 403 && data.error === 'Anda tidak punya hak akses untuk aksi ini.') {
+      const refreshed = await refreshSessionRole();
+      if (refreshed) {
+        const err = new Error('Hak akses akun berubah. Tampilan sudah disesuaikan dengan role terbaru.');
+        err.silent = true; // refreshSessionRole already displays one notification
+        throw err;
+      }
+    }
     if (r.status === 401 && me) { me = null; location.hash = '#/login'; }
     throw new Error(data.error || 'Terjadi kesalahan.');
   }
@@ -33,7 +78,7 @@ function toast(msg, type = 'success') {
   el.addEventListener('hidden.bs.toast', () => el.remove());
   t.show();
 }
-const fail = e => toast(e.message, 'danger');
+const fail = e => { if (!e.silent) toast(e.message, 'danger'); };
 
 /* ---------- modal ---------- */
 const modalEl = document.getElementById('modal');
