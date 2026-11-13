@@ -232,7 +232,7 @@ def can_read_file(user, storage_ref):
     """Authorize private file access using its owning domain record."""
     team_logo = TimEsports.query.filter_by(logo_url=storage_ref).first()
     if team_logo:
-        return True  # team logos are visible to any authenticated platform user
+        return True  # team logos are public; match evidence remains restricted
 
     evidence = (HasilMatch.query.join(JadwalMatch).join(Turnamen)
                 .filter(HasilMatch.foto_bukti_url == storage_ref).first())
@@ -409,7 +409,7 @@ def register_routes(app):
     def list_turnamen():
         u = current_user()
         q = Turnamen.query.order_by(Turnamen.tanggal_mulai.desc())
-        if request.args.get("milik_saya") and u.role.nama_role == ROLE_PANITIA:
+        if request.args.get("milik_saya") and u is not None and u.role.nama_role == ROLE_PANITIA:
             q = q.filter_by(id_panitia=u.id_user)
         return jsonify([t.to_dict(u) for t in q])
 
@@ -540,7 +540,7 @@ def register_routes(app):
         tid = request.args.get("turnamen_id", type=int)
         if tid:
             q = q.filter_by(id_turnamen=tid)
-        if request.args.get("milik_saya") and u.tim:
+        if request.args.get("milik_saya") and u is not None and u.tim:
             q = q.filter((JadwalMatch.id_tim_a == u.tim.id_tim) |
                          (JadwalMatch.id_tim_b == u.tim.id_tim))
         return jsonify([j.to_dict(u, public=u is None) for j in q])
