@@ -152,7 +152,11 @@ class JadwalMatch(db.Model):
     hasil = db.relationship("HasilMatch", back_populates="jadwal", uselist=False,
                             cascade="all, delete-orphan")
 
-    def to_dict(self, viewer=None):
+    def to_dict(self, viewer=None, public=False):
+        hasil_terlihat = (
+            self.hasil is not None
+            and (not public or self.hasil.status_validasi == VALID_SETUJU)
+        )
         d = {
             "id_jadwal": self.id_jadwal,
             "turnamen": {"id_turnamen": self.turnamen.id_turnamen,
@@ -161,7 +165,9 @@ class JadwalMatch(db.Model):
             "tim_b": self.tim_b.to_dict(),
             "jadwal_main": iso(self.jadwal_main),
             "status_match": self.status_match,
-            "hasil": self.hasil.to_dict() if self.hasil else None,
+            # Public visitors see only approved results, never private evidence files.
+            "hasil": (self.hasil.to_dict(include_evidence=not public)
+                      if hasil_terlihat else None),
         }
         if viewer is not None and viewer.tim:
             mine = viewer.tim.id_tim in (self.id_tim_a, self.id_tim_b)
@@ -187,14 +193,16 @@ class HasilMatch(db.Model):
     jadwal = db.relationship("JadwalMatch", back_populates="hasil")
     pemenang = db.relationship("TimEsports")
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_evidence=True):
+        data = {
             "id_hasil": self.id_hasil,
             "id_jadwal": self.id_jadwal,
             "id_pemenang": self.id_pemenang,
             "nama_pemenang": self.pemenang.nama_tim,
-            "foto_bukti_url": file_url(self.foto_bukti_url),
             "status_validasi": self.status_validasi,
             "catatan_validasi": self.catatan_validasi,
             "waktu_unggah": iso(self.waktu_unggah),
         }
+        if include_evidence:
+            data["foto_bukti_url"] = file_url(self.foto_bukti_url)
+        return data
