@@ -232,11 +232,11 @@ def can_read_file(user, storage_ref):
     """Authorize private file access using its owning domain record."""
     team_logo = TimEsports.query.filter_by(logo_url=storage_ref).first()
     if team_logo:
-        return True  # team logos are visible to any authenticated platform user
+        return True  # team logos are public; match evidence remains restricted
 
     evidence = (HasilMatch.query.join(JadwalMatch).join(Turnamen)
                 .filter(HasilMatch.foto_bukti_url == storage_ref).first())
-    if not evidence:
+    if not evidence or user is None:
         return False
 
     role = user.role.nama_role
@@ -316,8 +316,8 @@ def register_routes(app):
         return send_from_directory(os.path.join(app.config["PUBLIC_FOLDER"], "js"), name)
 
     @app.get("/api/files/<token>")
-    @require()
-    def private_file(actor, token):
+    def private_file(token):
+        actor = current_user()
         try:
             storage_ref = decode_file_token(token)
         except (ValueError, UnicodeError):
@@ -406,10 +406,10 @@ def register_routes(app):
 
     # ---------------------------------------------------------------- turnamen (US-02)
     @app.get("/api/turnamen")
-    @require()
-    def list_turnamen(u):
+    def list_turnamen():
+        u = current_user()
         q = Turnamen.query.order_by(Turnamen.tanggal_mulai.desc())
-        if request.args.get("milik_saya") and u.role.nama_role == ROLE_PANITIA:
+        if request.args.get("milik_saya") and u is not None and u.role.nama_role == ROLE_PANITIA:
             q = q.filter_by(id_panitia=u.id_user)
         return jsonify([t.to_dict(u) for t in q])
 
@@ -428,8 +428,8 @@ def register_routes(app):
         return jsonify(t.to_dict(u)), 201
 
     @app.get("/api/turnamen/<int:tid>")
-    @require()
-    def get_turnamen(u, tid):
+    def get_turnamen(tid):
+        u = current_user()
         return jsonify(get_or_404(Turnamen, tid, "Turnamen").to_dict(u))
 
     @app.patch("/api/turnamen/<int:tid>")
@@ -447,8 +447,7 @@ def register_routes(app):
         return jsonify(t.to_dict(u))
 
     @app.get("/api/turnamen/<int:tid>/peserta")
-    @require()
-    def peserta(_u, tid):
+    def peserta(tid):
         t = get_or_404(Turnamen, tid, "Turnamen")
         return jsonify([p.tim.to_dict() for p in t.pendaftar])
 
@@ -462,8 +461,7 @@ def register_routes(app):
         db.session.add(PendaftaranTurnamen(id_turnamen=t.id_turnamen, id_tim=tim.id_tim))
 
     @app.get("/api/tim")
-    @require()
-    def list_tim(_u):
+    def list_tim():
         q = TimEsports.query.order_by(TimEsports.nama_tim)
         tid = request.args.get("turnamen_id", type=int)
         if tid:
@@ -536,16 +534,16 @@ def register_routes(app):
 
     # ---------------------------------------------------------------- jadwal (US-04)
     @app.get("/api/jadwal")
-    @require()
-    def list_jadwal(u):
+    def list_jadwal():
+        u = current_user()
         q = JadwalMatch.query.order_by(JadwalMatch.jadwal_main)
         tid = request.args.get("turnamen_id", type=int)
         if tid:
             q = q.filter_by(id_turnamen=tid)
-        if request.args.get("milik_saya") and u.tim:
+        if request.args.get("milik_saya") and u is not None and u.tim:
             q = q.filter((JadwalMatch.id_tim_a == u.tim.id_tim) |
                          (JadwalMatch.id_tim_b == u.tim.id_tim))
-        return jsonify([j.to_dict(u) for j in q])
+        return jsonify([j.to_dict(u, public=u is None) for j in q])
 
     @app.post("/api/jadwal")
     @require(ROLE_PANITIA)

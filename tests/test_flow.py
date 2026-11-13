@@ -72,6 +72,10 @@ class FlowTest(unittest.TestCase):
         r = p.post("/api/turnamen", json={"nama_turnamen": "Cup", "tanggal_mulai": "2026-12-01"})
         self.assertEqual(r.status_code, 201)
         tid = r.json["id_turnamen"]
+        # Public visitors may browse the tournament catalog and room details.
+        self.assertEqual(anon.get("/api/turnamen").status_code, 200)
+        self.assertEqual(anon.get(f"/api/turnamen/{tid}").status_code, 200)
+        self.assertEqual(anon.get(f"/api/turnamen/{tid}/peserta").json, [])
 
         # US-03: kapten membuat tim + mendaftar turnamen
         tims = []
@@ -82,6 +86,8 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(k1.post("/api/tim", data={"nama_tim": "Lagi"}).status_code, 409)  # 1 kapten = 1 tim
         self.assertEqual(k1.post(f"/api/turnamen/{tid}/daftar").status_code, 409)  # daftar ganda
         self.assertEqual(len(k1.get(f"/api/tim?turnamen_id={tid}").json), 3)
+        self.assertEqual(len(anon.get(f"/api/tim?turnamen_id={tid}").json), 3)
+        self.assertEqual(len(anon.get(f"/api/turnamen/{tid}/peserta").json), 3)
 
         # US-04: jadwal; validasi aturan
         jd = {"id_turnamen": tid, "id_tim_a": tims[0], "id_tim_b": tims[1], "jadwal_main": "2026-12-01T10:00"}
@@ -91,6 +97,10 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(r.status_code, 201)
         jid = r.json["id_jadwal"]
         self.assertEqual(r.json["status_match"], "Menunggu")
+        self.assertEqual(anon.get("/api/jadwal").status_code, 200)
+        self.assertEqual(anon.get("/api/jadwal?milik_saya=1").status_code, 200)
+        self.assertEqual(anon.get("/api/turnamen?milik_saya=1").status_code, 200)
+        self.assertEqual(len(anon.get(f"/api/jadwal?turnamen_id={tid}").json), 1)
         self.assertEqual(p.post("/api/jadwal", json={**jd, "id_tim_b": tims[2]}).status_code, 409)  # bentrok
 
         # US-05: hanya kapten yang bertanding yang boleh unggah; hanya gambar
@@ -102,6 +112,9 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(r.status_code, 201, r.json)
         hid = r.json["id_hasil"]
         self.assertEqual(r.json["id_pemenang"], tims[0])
+        pending_public = anon.get("/api/jadwal").json[0]
+        self.assertIsNone(pending_public["hasil"])  # pending winner is not an official public result
+        self.assertNotIn("foto_bukti_url", pending_public)
         self.assertEqual(k1.get("/api/jadwal").json[0]["status_match"], "Diproses")
         self.assertEqual(k2.post(f"/api/jadwal/{jid}/hasil", data=up()).status_code, 409)  # sedang diproses
         self.assertEqual(k1.get(r.json["foto_bukti_url"]).status_code, 200)
@@ -109,7 +122,7 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(k3.get(r.json["foto_bukti_url"]).status_code, 403)  # unrelated captain
         self.assertEqual(p.get(r.json["foto_bukti_url"]).status_code, 200)  # tournament owner
         self.assertEqual(p2.get(r.json["foto_bukti_url"]).status_code, 403)  # other organizer
-        self.assertEqual(anon.get(r.json["foto_bukti_url"]).status_code, 401)
+        self.assertEqual(anon.get(r.json["foto_bukti_url"]).status_code, 403)  # evidence stays private
 
         # US-06: validasi; panitia lain tidak boleh; tolak -> unggah ulang -> setuju
         self.assertEqual(p2.patch(f"/api/hasil/{hid}/validasi", json={"keputusan": "setuju"}).status_code, 403)
@@ -126,6 +139,11 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(r.json["status_validasi"], "Disetujui")
         j = p.get("/api/jadwal").json[0]
         self.assertEqual(j["status_match"], "Selesai")
+        public_result = anon.get(f"/api/jadwal?turnamen_id={tid}").json[0]["hasil"]
+        self.assertEqual(public_result["nama_pemenang"], "Beta")
+        self.assertEqual(public_result["status_validasi"], "Disetujui")
+        self.assertNotIn("foto_bukti_url", public_result)
+        self.assertEqual(anon.get(r.json["foto_bukti_url"]).status_code, 403)
         self.assertEqual(p.patch(f"/api/hasil/{hid}/validasi", json={"keputusan": "tolak"}).status_code, 409)
 
 

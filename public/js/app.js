@@ -113,12 +113,15 @@ const table = (heads, rows) => rows.length
 
 function hasilCell(j) {
   const h = j.hasil;
-  if (!h) return '<span class="text-muted">Belum ada</span>';
-  return `<div class="d-flex gap-2 align-items-center">
-    <a href="${esc(h.foto_bukti_url)}" target="_blank" rel="noopener noreferrer"><img class="bukti-thumb" src="${esc(h.foto_bukti_url)}"></a>
+  if (!h) return '<span class="text-muted">Belum ada hasil resmi</span>';
+  const evidence = h.foto_bukti_url
+    ? `<a href="${esc(h.foto_bukti_url)}" target="_blank" rel="noopener noreferrer"><img class="bukti-thumb" src="${esc(h.foto_bukti_url)}"></a>`
+    : '';
+  return `<div class="d-flex gap-2 align-items-center">${evidence}
     <div>${badge(h.status_validasi)}<div class="small">Menang: <b>${esc(h.nama_pemenang)}</b></div>
     ${h.catatan_validasi ? `<div class="small text-danger">Catatan: ${esc(h.catatan_validasi)}</div>` : ''}</div></div>`;
 }
+
 function jadwalRows(list) {
   return list.map(j => `<tr>
     <td>${esc(j.turnamen.nama_turnamen)}</td>
@@ -133,20 +136,18 @@ const jadwalTable = list => list.length
 
 /* ---------- navigasi ---------- */
 function renderNav() {
-  const links = [];
-  if (me) {
-    links.push(['#/turnamen', 'Turnamen'], ['#/jadwal', 'Jadwal']);
-    if (me.role === 'kapten') links.push(['#/tim', 'Tim Saya']);
-    if (me.role === 'panitia') links.push(['#/kelola', 'Kelola Turnamen'], ['#/validasi', 'Validasi Hasil']);
-    if (me.role === 'super_admin') links.push(['#/admin', 'Pengguna']);
-  }
+  const links = [['#/turnamen', 'Turnamen'], ['#/jadwal', 'Jadwal']];
+  if (me?.role === 'kapten') links.push(['#/tim', 'Tim Saya']);
+  if (me?.role === 'panitia') links.push(['#/kelola', 'Kelola Turnamen'], ['#/validasi', 'Validasi Hasil']);
+  if (me?.role === 'super_admin') links.push(['#/admin', 'Pengguna']);
   const cur = location.hash.split('/').slice(0, 2).join('/');
   document.getElementById('navLinks').innerHTML = links.map(([h, l]) =>
     `<li class="nav-item"><a class="nav-link ${cur === h ? 'active' : ''}" href="${h}">${l}</a></li>`).join('');
   document.getElementById('navUser').innerHTML = me
     ? `<span class="small">${esc(me.nama)} <span class="badge text-bg-light">${ROLE_LABEL[me.role]}</span></span>
        <button class="btn btn-sm btn-outline-light" data-act="logout">Keluar</button>`
-    : '';
+    : `<a class="btn btn-sm btn-outline-light me-2" href="#/login">Masuk</a>
+       <a class="btn btn-sm btn-light" href="#/register">Daftar</a>`;
 }
 
 const routes = {
@@ -157,7 +158,7 @@ const ROLE_ONLY = { tim: 'kapten', kelola: 'panitia', validasi: 'panitia', admin
 
 async function route() {
   const [, name = '', arg] = location.hash.split('/');
-  if (!me && !['login', 'register'].includes(name)) { location.hash = '#/login'; return; }
+  if (!me && ROLE_ONLY[name]) { location.hash = '#/login'; return; }
   if (me && ['login', 'register', ''].includes(name)) { location.hash = '#/turnamen'; return; }
   if (ROLE_ONLY[name] && me.role !== ROLE_ONLY[name]) { toast('Anda tidak punya akses ke halaman itu.', 'danger'); location.hash = '#/turnamen'; return; }
   renderNav();
@@ -190,20 +191,51 @@ function viewRegister() {
 }
 
 /* ---------- turnamen & jadwal (semua role) ---------- */
-async function viewTurnamen() {
+async function viewTurnamen(id) {
+  if (id) return viewTurnamenDetail(id);
   const list = await api('/turnamen');
-  const isK = me.role === 'kapten';
+  const isK = me?.role === 'kapten';
   let hint = '';
   if (isK && !me.id_tim) hint = `<div class="alert alert-info">Buat <a href="#/tim">profil tim</a> dulu untuk bisa mendaftar ke turnamen.</div>`;
-  const rows = list.map(t => `<tr>
-    <td><b>${esc(t.nama_turnamen)}</b></td><td>${fmtD(t.tanggal_mulai)}</td><td>${badge(t.status)}</td>
-    <td>${esc(t.panitia)}</td><td>${t.jumlah_tim}</td>
-    <td>${isK && me.id_tim && t.status === 'aktif'
-      ? (t.saya_terdaftar ? '<span class="badge text-bg-success">Terdaftar</span>'
-        : `<button class="btn btn-sm btn-brand" data-act="daftar" data-id="${t.id_turnamen}">Daftar</button>`) : ''}</td>
-  </tr>`);
+  const rows = list.map(t => {
+    let action = '';
+    if (isK && me.id_tim && t.status === 'aktif') {
+      action = t.saya_terdaftar
+        ? '<span class="badge text-bg-success">Terdaftar</span>'
+        : `<button class="btn btn-sm btn-brand" data-act="daftar" data-id="${t.id_turnamen}">Daftar</button>`;
+    } else if (!me) {
+      action = `<a class="btn btn-sm btn-outline-dark" href="#/login">Masuk untuk daftar</a>`;
+    } else if (isK && !me.id_tim) {
+      action = `<a class="btn btn-sm btn-outline-dark" href="#/tim">Buat profil tim</a>`;
+    }
+    return `<tr>
+      <td><b>${esc(t.nama_turnamen)}</b></td><td>${fmtD(t.tanggal_mulai)}</td><td>${badge(t.status)}</td>
+      <td>${esc(t.panitia)}</td><td>${t.jumlah_tim}</td>
+      <td><a class="btn btn-sm btn-outline-dark" href="#/turnamen/${t.id_turnamen}">Lihat room</a> ${action}</td>
+    </tr>`;
+  });
   $app.innerHTML = hint + card('Daftar Turnamen',
-    rows.length ? table(['Turnamen', 'Mulai', 'Status', 'Penyelenggara', 'Tim', ''], rows) : empty('Belum ada turnamen.'));
+    rows.length ? table(['Turnamen', 'Mulai', 'Status', 'Penyelenggara', 'Tim', 'Aksi'], rows) : empty('Belum ada turnamen.'));
+}
+
+async function viewTurnamenDetail(id) {
+  const [t, peserta, jadwal] = await Promise.all([
+    api('/turnamen/' + id), api(`/turnamen/${id}/peserta`), api(`/jadwal?turnamen_id=${id}`)
+  ]);
+  const action = !me
+    ? '<a class="btn btn-sm btn-brand" href="#/login">Masuk untuk mendaftar</a>'
+    : me.role === 'kapten' && !me.id_tim
+      ? '<a class="btn btn-sm btn-brand" href="#/tim">Buat profil tim</a>' : '';
+  const teams = peserta.length
+    ? table(['Nama Tim', 'Kapten'], peserta.map(p => `<tr><td>${timLabel(p)}</td><td>${esc(p.kapten)}</td></tr>`))
+    : empty('Belum ada tim yang terdaftar.');
+  $app.innerHTML = `<a href="#/turnamen" class="small">&larr; Kembali ke daftar turnamen</a>
+    <div class="d-flex justify-content-between align-items-center my-3 flex-wrap gap-2">
+      <div><h3 class="mb-1">${esc(t.nama_turnamen)}</h3><div class="text-muted small">Mulai ${fmtD(t.tanggal_mulai)} · ${badge(t.status)}</div></div>
+      ${action}
+    </div>`
+    + card(`Tim Peserta (${peserta.length})`, teams)
+    + card('Jadwal dan Hasil Pertandingan', jadwalTable(jadwal));
 }
 
 async function viewJadwal() {
@@ -212,7 +244,7 @@ async function viewJadwal() {
     <div class="row g-2 mb-3"><div class="col-md-5"><select id="fTurnamen" class="form-select">
       <option value="">Semua turnamen</option>${ts.map(t => `<option value="${t.id_turnamen}">${esc(t.nama_turnamen)}</option>`).join('')}
     </select></div>
-    ${me.role === 'kapten' ? `<div class="col-auto form-check pt-2 ms-2"><input type="checkbox" id="fMine" class="form-check-input">
+    ${me?.role === 'kapten' ? `<div class="col-auto form-check pt-2 ms-2"><input type="checkbox" id="fMine" class="form-check-input">
       <label for="fMine" class="form-check-label">Hanya match tim saya</label></div>` : ''}</div>
     <div id="jadwalBox">${jadwalTable(list)}</div>`);
   const reload = async () => {
@@ -401,6 +433,6 @@ document.addEventListener('change', e => {
 /* ---------- start ---------- */
 (async () => {
   try { me = await api('/auth/me'); } catch { me = null; }
-  if (!location.hash) location.hash = me ? '#/turnamen' : '#/login';
+  if (!location.hash) location.hash = '#/turnamen';
   route();
 })();
