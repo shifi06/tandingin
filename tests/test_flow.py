@@ -98,6 +98,8 @@ class FlowTest(unittest.TestCase):
         jid = r.json["id_jadwal"]
         self.assertEqual(r.json["status_match"], "Menunggu")
         self.assertEqual(anon.get("/api/jadwal").status_code, 200)
+        self.assertEqual(anon.get("/api/jadwal?milik_saya=1").status_code, 200)
+        self.assertEqual(anon.get("/api/turnamen?milik_saya=1").status_code, 200)
         self.assertEqual(len(anon.get(f"/api/jadwal?turnamen_id={tid}").json), 1)
         self.assertEqual(p.post("/api/jadwal", json={**jd, "id_tim_b": tims[2]}).status_code, 409)  # bentrok
 
